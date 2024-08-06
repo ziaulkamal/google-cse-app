@@ -1,13 +1,22 @@
 import axios from 'axios';
 
-// Daftar kunci API dan CSE ID
-const keys = [
-//   { apiKey: 'AIzaSyCdogjHgWu2BJndKr8s-Pyj1VfbHleMqEo', cseId: '04327ce68475f4076' },
-//   { apiKey: 'AIzaSyBhvs4xfTu8A7ayg-RsKQREqBDH--DrZW8', cseId: '36ee2f8543f584667' },
-//   { apiKey: 'AIzaSyDDpxGjixl23nxUASuOdb4ydhRdr4zgpI8', cseId: '918c00d62fdd34400' },
-  { apiKey: 'AIzaSyB4Oqre3-X3fXkIe8JqH_ZDA3WkRJwYgc4', cseId: '646655062851c42c9' },
-];
+// Fungsi untuk mendapatkan kredensial dari API eksternal
+async function fetchCredentials() {
+  const credentialsUrl = process.env.CREDENTIALS_URL; // Ambil URL dari environment variable
 
+  try {
+    const response = await axios.get(credentialsUrl);
+    const { apiKey, cseId } = response.data;
+
+    return { apiKey, cseId };
+  } catch (error) {
+    console.error('Failed to fetch credentials:', error.message);
+    throw error;
+  }
+}
+
+// Daftar kunci API dan CSE ID
+let keys = [];
 let currentIndex = 0;
 
 // Fungsi untuk menunggu selama ms milidetik
@@ -24,8 +33,10 @@ function extractFirstFourSyllables(title) {
 
 // Fungsi untuk mengirim title ke API dengan axios
 async function sendTitleToApi(title, domain) {
+  const apiEndpoint = process.env.API_ENDPOINT; // Ambil endpoint dari environment variable
+
   try {
-    const response = await axios.post('http://autocreatecontent.test/api/job', {
+    const response = await axios.post(apiEndpoint, {
       keyword: title,
       url: domain,
       status: false,
@@ -56,17 +67,26 @@ export async function GET(request) {
     return new Response(JSON.stringify({ error: 'Query parameter is required' }), { status: 400 });
   }
 
+  if (keys.length === 0) {
+    try {
+      // Ambil kredensial dari API eksternal
+      const credentials = await fetchCredentials();
+      keys = [{ apiKey: credentials.apiKey, cseId: credentials.cseId }];
+    } catch (error) {
+      return new Response(JSON.stringify({ error: 'Failed to fetch credentials' }), { status: 500 });
+    }
+  }
+
   const { apiKey, cseId } = keys[currentIndex];
 
   try {
     // Jeda 4 detik sebelum melakukan permintaan API
-    
     const response = await axios.get('https://www.googleapis.com/customsearch/v1', {
-        params: {
-            key: apiKey,
-            cx: cseId,
-            q: query,
-        },
+      params: {
+        key: apiKey,
+        cx: cseId,
+        q: query,
+      },
     });
     
     await sleep(4000);
@@ -80,7 +100,7 @@ export async function GET(request) {
     for (const [index, title] of titles.entries()) {
       await sendTitleToApi(title, domain);
       if (index < titles.length - 1) {
-        await sleep(4000); // Jeda 1 detik (1000 ms)
+        await sleep(4000); // Jeda 4 detik
       }
     }
 
